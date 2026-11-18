@@ -2,9 +2,98 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <title>설문 집계기</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --fg: #1d1f23; --muted: #5c6370; --line: #d6d9de;
+    --panel: #f5f6f8; --accent: #2457c5; --accent-fg: #ffffff; --warn: #8a5300; --warn-bg: #fff4e0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181c; --fg: #e6e8eb; --muted: #a0a7b2; --line: #3a3f47;
+      --panel: #1f2227; --accent: #7aa2ff; --accent-fg: #0b1020; --warn: #ffcf8a; --warn-bg: #3a2a10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    line-height: 1.5;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 16px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; }
+  textarea {
+    width: 100%; min-height: 200px; padding: 10px; resize: vertical;
+    font: 0.9rem ui-monospace, SFMono-Regular, Consolas, monospace; tab-size: 8;
+    color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  }
+  .actions { display: flex; gap: 8px; margin: 12px 0 20px; flex-wrap: wrap; }
+  button {
+    font: inherit; padding: 8px 16px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  }
+  button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+  button:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .status { margin: 0 0 12px; }
+  .notice { margin: 0 0 12px; padding: 8px 12px; border-radius: 6px; background: var(--warn-bg); color: var(--warn); }
+  .notice:empty, .status:empty { display: none; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: pre-wrap; min-width: 8em; }
+  thead th { background: var(--panel); font-weight: 600; }
+  @media (max-width: 480px) {
+    th, td { padding: 8px 5px; font-size: 0.9rem; }
+    th:first-child, td:first-child { min-width: 5em; }
+  }
+  details { margin-top: 28px; color: var(--muted); }
+  details ul { padding-left: 1.2em; }
+  [hidden] { display: none !important; }
+</style>
 </head>
 <body>
+<main>
+  <h1>설문 집계기</h1>
+  <p class="lead">엑셀에서 머리글 줄까지 복사해 붙여넣으면 문항별 결과를 보여 줍니다. 데이터는 이 브라우저 안에서만 계산하며 어디로도 보내거나 저장하지 않습니다.</p>
+
+  <label for="input">응답 데이터 (머리글 포함, 첫 열은 응답번호)</label>
+  <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off"
+    placeholder="응답번호&#9;문항1&#9;문항2&#10;1&#9;5&#9;4&#10;2&#9;3&#9;"></textarea>
+
+  <div class="actions">
+    <button type="button" id="run" class="primary">집계하기</button>
+    <button type="button" id="clear">지우기</button>
+  </div>
+
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+  <p id="notice" class="notice"></p>
+
+  <div class="table-wrap" id="result" hidden>
+    <table>
+      <caption hidden>문항별 집계 결과</caption>
+      <thead>
+        <tr><th scope="col">문항</th><th scope="col">유효 응답</th><th scope="col">평균</th><th scope="col">빈 응답</th><th scope="col">제외</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <details>
+    <summary>집계 규칙</summary>
+    <ul>
+      <li>첫 줄은 머리글, 첫 열(응답번호)은 집계하지 않습니다.</li>
+      <li>앞뒤 공백을 지운 값이 1·2·3·4·5 중 하나면 <b>유효</b>, 비었거나 공백만 있으면 <b>빈 응답</b>, 그 밖의 값은 <b>제외</b>입니다.</li>
+      <li>평균은 유효 응답의 합 ÷ 유효 응답 수를 소수 셋째 자리에서 반올림해 둘째 자리까지 보여 줍니다. 유효 응답이 없으면 "-"입니다.</li>
+      <li>칸 수가 머리글보다 모자란 줄은 모자란 칸을 빈 응답으로 셉니다. 머리글보다 많은 칸은 집계하지 않습니다.</li>
+    </ul>
+  </details>
+</main>
 <script id="tally-core">
 /* 계산 로직: DOM을 쓰지 않는다. 시험(tests/tally.test.js)이 이 블록만 꺼내 실행한다. */
 var SurveyTally = (function () {
@@ -121,6 +210,67 @@ var SurveyTally = (function () {
   }
 
   return { parseTSV: parseTSV, classifyCell: classifyCell, formatAverage: formatAverage, tally: tally };
+})();
+</script>
+<script>
+/* 화면: 입력을 읽어 SurveyTally.tally 결과를 표로 그린다. 값은 textContent 로만 넣는다. */
+(function () {
+  'use strict';
+  var input = document.getElementById('input');
+  var status = document.getElementById('status');
+  var notice = document.getElementById('notice');
+  var result = document.getElementById('result');
+  var tbody = document.getElementById('rows');
+
+  function cell(tag, text) {
+    var el = document.createElement(tag);
+    el.textContent = String(text);
+    return el;
+  }
+
+  function render() {
+    var r = SurveyTally.tally(input.value);
+    tbody.replaceChildren();
+    notice.textContent = '';
+    if (r.error === 'empty') {
+      result.hidden = true;
+      status.textContent = '붙여넣은 데이터가 없습니다.';
+      return;
+    }
+    if (r.error === 'no-questions') {
+      result.hidden = true;
+      status.textContent = '문항 열이 없습니다. 머리글 줄에 응답번호 다음 열이 있는지, 칸이 탭으로 나뉘어 있는지 확인해 주세요.';
+      return;
+    }
+    r.questions.forEach(function (q) {
+      var tr = document.createElement('tr');
+      var th = cell('th', q.name);
+      th.scope = 'row';
+      tr.append(th, cell('td', q.valid), cell('td', q.average), cell('td', q.blank), cell('td', q.excluded));
+      tbody.append(tr);
+    });
+    result.hidden = false;
+    status.textContent = '응답 ' + r.responseRows + '줄, 문항 ' + r.questions.length + '개를 집계했습니다.';
+    var notes = [];
+    if (r.shortRows) notes.push('칸 수가 머리글보다 모자란 줄 ' + r.shortRows + '개: 모자란 칸은 빈 응답으로 셌습니다.');
+    if (r.longRows) notes.push('칸 수가 머리글보다 많은 줄 ' + r.longRows + '개: 넘치는 칸은 집계하지 않았습니다.');
+    notice.textContent = notes.join(' ');
+  }
+
+  document.getElementById('run').addEventListener('click', render);
+  document.getElementById('clear').addEventListener('click', function () {
+    input.value = '';
+    tbody.replaceChildren();
+    result.hidden = true;
+    status.textContent = '';
+    notice.textContent = '';
+    input.focus();
+  });
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); render(); }
+  });
+  // 붙여넣으면 바로 집계 (붙여넣기가 반영된 다음에)
+  input.addEventListener('paste', function () { setTimeout(render, 0); });
 })();
 </script>
 </body>
