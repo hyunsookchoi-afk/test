@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>설문 집계기</title>
+</head>
+<body>
+<script id="tally-core">
+/* 계산 로직: DOM을 쓰지 않는다. 시험(tests/tally.test.js)이 이 블록만 꺼내 실행한다. */
+var SurveyTally = (function () {
+  'use strict';
+
+  /* 탭 구분 텍스트를 줄 배열(각 줄은 칸 배열)로 바꾼다.
+     엑셀이 따옴표로 감싼 칸(칸 안 줄바꿈·탭, "" = ")도 푼다.
+     끝에 붙은 빈 줄은 버린다. */
+  function parseTSV(text) {
+    var rows = [];
+    var row = [];
+    var cell = '';
+    var i = 0;
+    var n = text.length;
+    var atCellStart = true;
+    while (i < n) {
+      var ch = text[i];
+      if (atCellStart && ch === '"') {
+        // 따옴표로 감싼 칸
+        i++;
+        while (i < n) {
+          if (text[i] === '"') {
+            if (text[i + 1] === '"') { cell += '"'; i += 2; continue; }
+            i++;
+            break;
+          }
+          cell += text[i++];
+        }
+        atCellStart = false;
+        continue;
+      }
+      if (ch === '\t') {
+        row.push(cell); cell = ''; atCellStart = true; i++;
+      } else if (ch === '\r' || ch === '\n') {
+        row.push(cell); rows.push(row);
+        row = []; cell = ''; atCellStart = true;
+        i += (ch === '\r' && text[i + 1] === '\n') ? 2 : 1;
+      } else {
+        cell += ch; atCellStart = false; i++;
+      }
+    }
+    if (!atCellStart || cell !== '' || row.length > 0) {
+      row.push(cell); rows.push(row);
+    }
+    // 끝의 빈 줄(칸 하나짜리 빈 줄) 제거
+    while (rows.length > 0) {
+      var last = rows[rows.length - 1];
+      if (last.length === 1 && last[0] === '') rows.pop(); else break;
+    }
+    return rows;
+  }
+
+  var VALID = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5 };
+
+  /* 칸 하나를 판정한다: { kind: 'valid', value } | { kind: 'blank' } | { kind: 'excluded' } */
+  function classifyCell(raw) {
+    var v = (raw === undefined || raw === null) ? '' : String(raw).trim();
+    if (v === '') return { kind: 'blank' };
+    if (Object.prototype.hasOwnProperty.call(VALID, v)) return { kind: 'valid', value: VALID[v] };
+    return { kind: 'excluded' };
+  }
+
+  /* 정수 합·개수로 평균을 소수 셋째 자리에서 반올림(0.5 올림)해 "x.yy"로 만든다. */
+  function formatAverage(sum, count) {
+    if (!count) return '-';
+    // round(sum / count * 100) 을 정수만으로: floor((200*sum + count) / (2*count))
+    var hundredths = Math.floor((200 * sum + count) / (2 * count));
+    var whole = Math.floor(hundredths / 100);
+    var frac = hundredths % 100;
+    return whole + '.' + (frac < 10 ? '0' : '') + frac;
+  }
+
+  /* 붙여넣은 텍스트를 집계한다. */
+  function tally(text) {
+    var rows = parseTSV(String(text === undefined || text === null ? '' : text));
+    if (rows.length === 0) {
+      return { questions: [], responseRows: 0, longRows: 0, shortRows: 0, error: 'empty' };
+    }
+    var header = rows[0];
+    var columnCount = header.length;
+    var questions = [];
+    for (var c = 1; c < columnCount; c++) {
+      var name = header[c].trim();
+      questions.push({
+        column: c,
+        name: name === '' ? '(' + (c + 1) + '번째 열)' : name,
+        valid: 0, sum: 0, blank: 0, excluded: 0, average: '-'
+      });
+    }
+    var longRows = 0;
+    var shortRows = 0;
+    for (var r = 1; r < rows.length; r++) {
+      var row = rows[r];
+      if (row.length > columnCount) longRows++;
+      if (row.length < columnCount) shortRows++;
+      for (var q = 0; q < questions.length; q++) {
+        var col = questions[q].column;
+        var result = classifyCell(col < row.length ? row[col] : '');
+        if (result.kind === 'valid') { questions[q].valid++; questions[q].sum += result.value; }
+        else if (result.kind === 'blank') questions[q].blank++;
+        else questions[q].excluded++;
+      }
+    }
+    for (var k = 0; k < questions.length; k++) {
+      questions[k].average = formatAverage(questions[k].sum, questions[k].valid);
+    }
+    return {
+      questions: questions,
+      responseRows: rows.length - 1,
+      longRows: longRows,
+      shortRows: shortRows,
+      error: questions.length === 0 ? 'no-questions' : null
+    };
+  }
+
+  return { parseTSV: parseTSV, classifyCell: classifyCell, formatAverage: formatAverage, tally: tally };
+})();
+</script>
+</body>
+</html>

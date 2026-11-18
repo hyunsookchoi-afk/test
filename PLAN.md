@@ -30,7 +30,7 @@
   - 그 아래 화면 스크립트: 입력을 읽어 `SurveyTally.tally`를 부르고 결과를 표로 그린다(`textContent`로만 넣어 HTML 주입을 막는다).
 - `tests/tally.test.js`: Node 내장 시험 도구(`node --test`)로 `index.html`에서 `tally-core` 블록을 꺼내 격리된 `vm`에서 실행해 검증한다. 외부 패키지 없음.
 - `tests/page.test.js`: `index.html`에 외부 주소 참조·저장소 API·네트워크 API가 없는지, CSP가 있는지 검사한다.
-- `package.json`: `npm test` → `node --test tests/`.
+- `package.json`: `npm test` → `node --test tests/*.test.js`.
 
 ## 작업 순서(작업마다 커밋)
 1. 계획서와 `.nojekyll`
